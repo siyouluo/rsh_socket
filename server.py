@@ -20,7 +20,7 @@ class remote_bash_server(socket.socket):
         socket.socket.__init__(self,socket.AF_INET, socket.SOCK_STREAM)#继承父类
         self.HOST = HOST# The server's hostname or IP address, you may set it to sth like '192.168.26.128'
         self.PORT = PORT# The port used by the server
-        self.root_dir = root_dir#客户端根目录
+        self.root_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0],root_dir.strip('./'))#客户端根目录
         if not os.path.exists(self.root_dir):
             os.makedirs(self.root_dir)
         self.system = platform.system#识别当前操作系统，增加兼容性
