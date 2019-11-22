@@ -53,11 +53,11 @@ class remote_shell_server(socket.socket):
             elif client_ACK == 'cancle':
                 pass
         else:
-            self.conn.send('0'.encode("utf-8"))#文件不存在
+            self.conn.send('not found'.encode("utf-8"))#文件不存在
     def send_dir_info(self, path):
         full_path = os.path.join(self.root_dir,path)
         if not os.path.exists(full_path):
-            self.conn.send(str(0).encode("utf-8"))  # 发送数据长度
+            self.conn.send('not found'.encode("utf-8"))  # 发送数据长度
             return
         #print(full_path)
         #print(os.listdir(full_path))
@@ -70,8 +70,10 @@ class remote_shell_server(socket.socket):
     def cmd_getdir_process(self):
         full_path = os.path.join(self.root_dir,self.cmd_list[1])
         if os.path.isdir(full_path):
-            info_str = ' '.join([p if os.path.isfile(os.path.join(full_path,p)) else (p+'/') for p in os.listdir(full_path)])
+            full_path_list = os.listdir(full_path)
+            info_str = ' '.join([p if os.path.isfile(os.path.join(full_path,p)) else (p+'/') for p in full_path_list])
             self.conn.send(('dir '+ info_str).encode('utf-8'))  # 发送数据
+            print('fpl:',('dir '+ info_str))
         else:
             self.conn.send('None'.encode('utf-8'))  # 发送数据
 

@@ -80,10 +80,10 @@ class remote_shell_client(socket.socket):
                 self.cmd += self.cmd_list[1]
             self.sendall(bytes(self.cmd, encoding="utf-8"))
             server_response = self.recv(1024)
-            info_size = int(server_response.decode("utf-8"))
-            if info_size==0:
-                print("no such dir!")
+            if server_response.decode("utf-8") == 'not found':
+                logging.warning("no such dir!")
                 return
+            info_size = int(server_response.decode("utf-8"))
             #print("文件大小：", info_size)
             info = bytes('', encoding='utf-8')
             # 2.接收文件内容
@@ -117,17 +117,19 @@ class remote_shell_client(socket.socket):
             print_str = '  '.join(['\033[1;34m'+s.strip('/')+'\033[0m' if s.endswith('/') else s for s in print_list])
             print(print_str)
             
-    def cmd_get_file(self, filename, to_path=''):
+    def cmd_get_file(self, filename, savename):
         '''
         从服务器接收一个文件
         '''
         # 接收预处理，决定是否需要接收，需要接收多少字节
+        cmd_str = 'get %s'%(filename)
+        self.sendall(bytes(cmd_str, encoding="utf-8"))
         server_response = self.recv(1024)
-        file_size = int(server_response.decode("utf-8"))
-        if file_size==0:
+        if server_response.decode("utf-8") == 'not found':
             logging.warning("文件不存在")
             return
-        file_full_name = os.path.join(self.root_dir,self.current_local_path.strip('.\/'),to_path, os.path.basename(filename))
+        file_size = int(server_response.decode("utf-8"))
+        file_full_name = os.path.join(self.root_dir,savename)
         filepath = os.path.split(file_full_name)[0]
         if not os.path.exists(filepath):
             os.makedirs(filepath)
@@ -175,34 +177,26 @@ class remote_shell_client(socket.socket):
             logging.warning("MD5 Verification Failed，所下载文件可能存在风险")
         else:
             logging.info("MD5 Verification successful!")
-    def cmd_getdir(self, getpath):
-        full_path = os.path.join(self.root_dir,self.current_local_path.strip('.\/'),getpath)
-        if os.path.exists(full_path):
-            overwrite_flag = input("dir %s already exist, overwrite it?(yes, no or rename?)\n"%full_path)
-            if overwrite_flag == "yes":
-                local_full_path = full_path
-            elif overwrite_flag == "no":
-                return
-            elif overwrite_flag == "rename":
-                local_full_path = full_path + input("add postfix(eg. new): ")
-            else:
-                return
-        else:
+    def cmd_getdir(self, targetpath, savepath):
+        full_path = os.path.join(self.root_dir, savepath)
+        if not os.path.exists(full_path):
             os.makedirs(full_path)
         # 将远程文件夹full_path 递归地下载到本地文件夹local_full_path
-        self.send(bytes("getdir %s"%getpath, encoding="utf-8"))  
+        self.send(bytes("getdir %s"%targetpath, encoding="utf-8"))  
         # 向远程服务器发送命令，下载文件夹，远程服务器检查是文件夹还是文件
         # 如果是文件夹，发回 'dir'，以及该文件夹下所有文件夹和文件，否则返回'None'
-        server_response = self.recv(1024).decode("utf-8") #我们先假定此次发回的字节数不会超过1KB
-        if server_response.startswith('dir'):
-            info_list = server_response.strip('dir ').split(' ')
+        server_response = self.recv(1024*16).decode("utf-8") #我们先假定此次发回的字节数不会超过1KB
+        server_response_list = server_response.split(' ')
+        if server_response_list[0]=='dir':
+            info_list = server_response_list[1:]
+            print(info_list)
             for i in info_list:
                 if i.endswith('/'):
-                    self.cmd_getdir(os.path.join(getpath, i))
+                    self.cmd_getdir(os.path.join(targetpath, i), os.path.join(savepath, i))
                 else:
-                    filename = os.path.join(getpath, i)
-                    self.sendall(bytes('get '+filename, encoding="utf-8"))
-                    self.cmd_get_file(filename, getpath)
+                    new_target_path = os.path.join(targetpath, i)
+                    new_save_path = os.path.join(savepath, i)
+                    self.cmd_get_file(new_target_path, new_save_path)
 
 
 
@@ -232,13 +226,13 @@ def main():
             if client.cmd_list[0]=='disconnect':#与服务器断开连接
                 break
             elif client.cmd_list[0]=='get':
-                client.cmd = client.cmd_list[0] + ' ' + client.current_remote_path + '/'
-                if len(client.cmd_list)==2:
-                    client.cmd += client.cmd_list[1]
-                client.sendall(bytes(client.cmd, encoding="utf-8"))
-                client.cmd_get_file(client.cmd_list[1])
+                file_name = os.path.join(client.current_remote_path, client.cmd_list[1])
+                save_name = os.path.join(client.current_local_path, os.path.basename(client.cmd_list[1]).strip('/'))
+                client.cmd_get_file(file_name, save_name)
             elif client.cmd_list[0]=="getdir":
-                client.cmd_getdir(client.cmd_list[1])
+                target_path = os.path.join(client.current_remote_path,client.cmd_list[1])
+                save_path = os.path.join(client.current_local_path, os.path.basename(client.cmd_list[1].strip('/')))
+                client.cmd_getdir(target_path, save_path)
             elif client.cmd_list[0]=='ls':
                 client.cmd_ls()
             elif client.cmd_list[0]=="cd":
@@ -251,3 +245,7 @@ if __name__=="__main__":
     except KeyboardInterrupt:
         exit()
 
+'''client.cmd = client.cmd_list[0] + ' ' + client.current_remote_path + '/'
+                if len(client.cmd_list)==2:
+                    client.cmd += client.cmd_list[1]
+                client.sendall(bytes(client.cmd, encoding="utf-8"))'''
