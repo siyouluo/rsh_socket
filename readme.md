@@ -70,4 +70,5 @@ def UsePlatform( ):
 * [Python判断当前操作系统类型以及os/sys/platform模块简介](https://blog.csdn.net/gatieme/article/details/45674367)  
 * [python类的继承](https://www.cnblogs.com/bigberg/p/7182741.html)  
 * [python 获取脚本所在目录的正确方法](https://blog.csdn.net/vitaminc4/article/details/78702852)  
+* [解决CMD命令行窗口不显示颜色问题python](https://blog.csdn.net/qq_15158911/article/details/88943571)  
 

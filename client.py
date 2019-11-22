@@ -8,6 +8,7 @@ import hashlib
 from tqdm import tqdm
 import platform
 import getpass
+
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
@@ -34,12 +35,17 @@ class remote_bash_client(socket.socket):
         self.usrname = getpass.getuser()
         self.cmd = ''
         self.cmd_list = []
+        if self.system=='Windows':
+            from colorama import init
+            init(autoreset=True)
     def PS1_update(self):
         if self.pos == 'local':
             path = self.current_local_path.strip('.')
         else:
             path = self.current_remote_path.strip('.')
-        self.PS1 = '\033[1;32m'+self.usrname+'@'+self.pos+'\033[0m:\033[1;34m~'+path+'\033[0m$ '
+        self.PS1 = '\033[1;32m'+self.usrname+'@'+self.pos+'\033[0m'+':'+'\033[0;34m~'+path+'\033[0m'+'$ '
+        #self.PS1 = '\033[1;32m'+self.usrname+'@'+self.pos+'\033[0m:\033[1;34m~'+path+'\033[0m$ '
+
     def cmd_process(self):
         self.cmd = self.cmd.replace('\t', ' ')
         self.cmd = re.sub(' +', ' ', self.cmd)
@@ -94,6 +100,7 @@ class remote_bash_client(socket.socket):
             #print(info_str)
             p = info_str.split(' ')
             print_str = '  '.join(['\033[1;34m'+s.strip('/')+'\033[0m' if s.endswith('/') else s for s in p])
+
             print(print_str)
         else:
             path = self.current_local_path
@@ -129,6 +136,9 @@ class remote_bash_client(socket.socket):
             elif overwrite_flag == "rename":
                 file_full_name += input("add postfix(eg. .new): ")
                 self.send(bytes("ready", encoding="utf-8"))  # 接收确认
+            else:
+                self.send(bytes("cancle", encoding="utf-8"))  # 取消接收
+                return
         else:
             self.send(bytes("ready", encoding="utf-8"))  # 接收确认
         with open(file_full_name, "wb") as f:
@@ -169,7 +179,8 @@ def main():
         client.connect((client.HOST, client.PORT))
         while True:
             client.PS1_update()
-            client.cmd = input(client.PS1)
+            print(client.PS1, end='')
+            client.cmd = input()
             client.cmd_process()
             #print(bytes(client.cmd, encoding="utf-8"))
             #print(client.cmd_list)
