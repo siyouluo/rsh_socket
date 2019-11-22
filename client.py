@@ -12,9 +12,9 @@ import getpass
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
-class remote_bash_client(socket.socket):
+class remote_shell_client(socket.socket):
     '''
-    自定义的远程bash终端的客户端类
+    自定义的远程Shell终端(rsh)的客户端类
     继承自socket.socket
     基本命令类似于bash
     可以对本地或远程文件进行操作
@@ -81,6 +81,9 @@ class remote_bash_client(socket.socket):
             self.sendall(bytes(self.cmd, encoding="utf-8"))
             server_response = self.recv(1024)
             info_size = int(server_response.decode("utf-8"))
+            if info_size==0:
+                print("no such dir!")
+                return
             #print("文件大小：", info_size)
             info = bytes('', encoding='utf-8')
             # 2.接收文件内容
@@ -107,22 +110,24 @@ class remote_bash_client(socket.socket):
             if len(self.cmd_list)==2:
                 path = os.path.join(path,self.cmd_list[1])
             full_path = os.path.join(self.root_dir,path)
+            if not os.path.exists(full_path):
+                print("no such dir!")
+                return
             print_list = [p if os.path.isfile(os.path.join(full_path,p)) else (p+'/') for p in os.listdir(full_path)]
             print_str = '  '.join(['\033[1;34m'+s.strip('/')+'\033[0m' if s.endswith('/') else s for s in print_list])
             print(print_str)
             
-    def get_file(self, filename):
+    def cmd_get_file(self, filename, to_path=''):
         '''
         从服务器接收一个文件
         '''
+        # 接收预处理，决定是否需要接收，需要接收多少字节
         server_response = self.recv(1024)
         file_size = int(server_response.decode("utf-8"))
-        #print("文件大小：", file_size)
         if file_size==0:
             logging.warning("文件不存在")
             return
-        # 2.接收文件内容
-        file_full_name = os.path.join(self.root_dir,self.current_local_path.strip('.\/'),os.path.basename(filename))
+        file_full_name = os.path.join(self.root_dir,self.current_local_path.strip('.\/'),to_path, os.path.basename(filename))
         filepath = os.path.split(file_full_name)[0]
         if not os.path.exists(filepath):
             os.makedirs(filepath)
@@ -141,6 +146,8 @@ class remote_bash_client(socket.socket):
                 return
         else:
             self.send(bytes("ready", encoding="utf-8"))  # 接收确认
+        
+        # 开始接收文件，并写入本地磁盘空间
         with open(file_full_name, "wb") as f:
             received_size = 0
             m = hashlib.md5()
@@ -158,10 +165,8 @@ class remote_bash_client(socket.socket):
                     m.update(data)
                     f.write(data)
         print("file saved as \' %s \'"%file_full_name)
-        
         #print("实际接收的大小:", received_size)  # 解码
-
-        # 3.md5值校验
+        # md5校验
         md5_sever = self.recv(1024).decode("utf-8")
         md5_client = m.hexdigest()
         #print("服务器发来的md5:", md5_sever)
@@ -170,42 +175,71 @@ class remote_bash_client(socket.socket):
             logging.warning("MD5 Verification Failed，所下载文件可能存在风险")
         else:
             logging.info("MD5 Verification successful!")
+    def cmd_getdir(self, getpath):
+        full_path = os.path.join(self.root_dir,self.current_local_path.strip('.\/'),getpath)
+        if os.path.exists(full_path):
+            overwrite_flag = input("dir %s already exist, overwrite it?(yes, no or rename?)\n"%full_path)
+            if overwrite_flag == "yes":
+                local_full_path = full_path
+            elif overwrite_flag == "no":
+                return
+            elif overwrite_flag == "rename":
+                local_full_path = full_path + input("add postfix(eg. new): ")
+            else:
+                return
+        else:
+            os.makedirs(full_path)
+        # 将远程文件夹full_path 递归地下载到本地文件夹local_full_path
+        self.send(bytes("getdir %s"%getpath, encoding="utf-8"))  
+        # 向远程服务器发送命令，下载文件夹，远程服务器检查是文件夹还是文件
+        # 如果是文件夹，发回 'dir'，以及该文件夹下所有文件夹和文件，否则返回'None'
+        server_response = self.recv(1024).decode("utf-8") #我们先假定此次发回的字节数不会超过1KB
+        if server_response.startswith('dir'):
+            info_list = server_response.strip('dir ').split(' ')
+            for i in info_list:
+                if i.endswith('/'):
+                    self.cmd_getdir(os.path.join(getpath, i))
+                else:
+                    filename = os.path.join(getpath, i)
+                    self.sendall(bytes('get '+filename, encoding="utf-8"))
+                    self.cmd_get_file(filename, getpath)
+
+
+
 
 
 
 
 def main():
-    with remote_bash_client() as client:
-        client.connect((client.HOST, client.PORT))
+    with remote_shell_client() as client:
+        client.connect((client.HOST, client.PORT))#连接服务器
         while True:
-            client.PS1_update()
-            print(client.PS1, end='')
-            client.cmd = input()
-            client.cmd_process()
-            #print(bytes(client.cmd, encoding="utf-8"))
-            #print(client.cmd_list)
-            if client.cmd.startswith('local'):
+            client.PS1_update()#根据用户名，当前路径等设置命令提示符
+            print(client.PS1, end='')#打印命令提示符，例如 usr@local: ~$ xxx
+            client.cmd = input()#等待用户输入
+            client.cmd_process()#用户输入命令可能不够规范，需要进行预处理
+            #print(bytes(client.cmd, encoding="utf-8")) #调试，显示读取到的用户命令
+            #print(client.cmd_list)#cmd_list是分解后的用户命令字符串列表
+            if client.cmd_list[0]=='local':
                 client.pos = 'local'
-            elif client.cmd.startswith('remote'):
+            elif client.cmd_list[0]=='remote':
                 client.pos = 'remote'
-            elif client.cmd.startswith('\x0c'):#CTRL+L
+            elif client.cmd_list[0]=='\x0c':#CTRL+L 清屏指令，需要输入回车才能执行
                 if client.system == 'Windows':
                     os.system('cls')
                 elif client.system == 'Linux':
                     os.system('clear')
-            if client.cmd.startswith('disconnect'):
-                client.sendall(bytes("disconnect", encoding="utf-8"))
+            if client.cmd_list[0]=='disconnect':#与服务器断开连接
                 break
-            elif client.cmd.startswith('get'):
+            elif client.cmd_list[0]=='get':
                 client.cmd = client.cmd_list[0] + ' ' + client.current_remote_path + '/'
                 if len(client.cmd_list)==2:
                     client.cmd += client.cmd_list[1]
                 client.sendall(bytes(client.cmd, encoding="utf-8"))
-                client.get_file(client.cmd_list[1])
+                client.cmd_get_file(client.cmd_list[1])
             elif client.cmd_list[0]=="getdir":
-                client.sendall(bytes(client.cmd, encoding="utf-8"))
-                pass
-            elif client.cmd.startswith('ls'):
+                client.cmd_getdir(client.cmd_list[1])
+            elif client.cmd_list[0]=='ls':
                 client.cmd_ls()
             elif client.cmd_list[0]=="cd":
                 client.cmd_cd()

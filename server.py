@@ -9,9 +9,9 @@ import platform
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
 
-class remote_bash_server(socket.socket):
+class remote_shell_server(socket.socket):
     '''
-    自定义的远程bash终端的服务器类
+    自定义的远程Shell终端(rsh)的服务器类
     继承自socket.socket
     可以响应来自于客户端的类似于bash的命令
     可以将服务器端的文件传输给客户端，或则接收来自客户端的文件
@@ -36,7 +36,7 @@ class remote_bash_server(socket.socket):
             # 1.先发送文件大小，让客户端准备接收
             size = os.stat(file_full_name).st_size  #获取文件大小
             self.conn.send(str(size).encode("utf-8"))  # 发送数据长度
-            print("发送的大小：", size)
+            print("预计发送的大小：", size)
             # 2.发送文件内容
             client_ACK = self.conn.recv(1024).decode("utf-8")  # 接收确认   ready
             if client_ACK == 'ready':
@@ -56,6 +56,9 @@ class remote_bash_server(socket.socket):
             self.conn.send('0'.encode("utf-8"))#文件不存在
     def send_dir_info(self, path):
         full_path = os.path.join(self.root_dir,path)
+        if not os.path.exists(full_path):
+            self.conn.send(str(0).encode("utf-8"))  # 发送数据长度
+            return
         #print(full_path)
         #print(os.listdir(full_path))
         info_str = ' '.join([p if os.path.isfile(os.path.join(full_path,p)) else (p+'/') for p in os.listdir(full_path)])
@@ -64,33 +67,37 @@ class remote_bash_server(socket.socket):
     #    print("发送的大小：", size)
         self.conn.recv(1024)  # 接收确认
         self.conn.send(info_str.encode('utf-8'))  # 发送数据
+    def cmd_getdir_process(self):
+        full_path = os.path.join(self.root_dir,self.cmd_list[1])
+        if os.path.isdir(full_path):
+            info_str = ' '.join([p if os.path.isfile(os.path.join(full_path,p)) else (p+'/') for p in os.listdir(full_path)])
+            self.conn.send(('dir '+ info_str).encode('utf-8'))  # 发送数据
+        else:
+            self.conn.send('None'.encode('utf-8'))  # 发送数据
 
 
 def main():
-    with remote_bash_server() as server:
+    with remote_shell_server() as server:
         server.bind((server.HOST, server.PORT))
         print('server socket:\n',server)
         server.listen()
-        print("start listen...\n")
+        print("server: start listen...\n")
         while True:
             server.conn, server.addr = server.accept()
-            print('Connected by', server.addr)
+            print('server: Connected by', server.addr)
             while server.conn:
                 server.cmd = server.conn.recv(1024).decode("utf-8")
                 if not server.cmd:
                     break
-                print('recv from client:',server.cmd)
+                print('client: ',server.cmd)
                 server.cmd_list = server.cmd.split(' ')
-                if server.cmd_list[0]=="disconnect":
-                    print("disconnect with client addr:", server.addr)
-                elif server.cmd_list[0]=="get":
+                if server.cmd_list[0]=="get":
                     server.send_file(server.cmd_list[1])
                 elif server.cmd_list[0]=="getdir":
-                    pass
+                    server.cmd_getdir_process()
                 elif server.cmd_list[0]=="ls":
                     server.send_dir_info(server.cmd_list[1])
-                elif server.cmd_list[0]=="cd":
-                    pass
+            print("server: disconnect with client addr:", server.addr,'\n')
 
 if __name__=="__main__":       
     try:
