@@ -197,6 +197,59 @@ class remote_shell_client(socket.socket):
                     new_target_path = os.path.join(targetpath, i)
                     new_save_path = os.path.join(savepath, i)
                     self.cmd_get_file(new_target_path, new_save_path)
+    def cmd_put_file(self, filename, savename):
+        '''
+        将本地文件发送至远程服务器
+        '''
+        file_full_name = os.path.join(self.root_dir,filename)
+        if os.path.isfile(file_full_name):  # 判断文件存在
+            # 通知服务器，准备接收
+            cmd_str = 'put %s'%(savename)
+            self.sendall(bytes(cmd_str, encoding="utf-8"))
+            server_response = self.recv(1024)
+            if server_response.decode("utf-8") == 'deny':
+                logging.warning("服务器拒绝接收")
+                return
+            # 1.先发送文件大小，让服务器端准备接收
+            size = os.stat(file_full_name).st_size  #获取文件大小
+            self.send(str(size).encode("utf-8"))  # 发送数据长度
+            print("预计发送的大小：", size)
+            # 2.发送文件内容
+            server_ACK = self.recv(1024).decode("utf-8")  # 再次接收确认   ready
+            if server_ACK == 'ready':
+                m = hashlib.md5()
+                f = open(file_full_name, "rb")
+                for line in f:
+                    self.send(line)  # 发送数据
+                    m.update(line)
+                f.close()
+                # 3.发送md5值进行校验
+                md5 = m.hexdigest()
+                self.send(md5.encode("utf-8"))  # 发送md5值
+                print("md5:", md5)
+                server_ACK = self.recv(1024).decode("utf-8")  # 完成确认   ready
+                if server_ACK == 'done':
+                    print("done!")
+            elif server_ACK == 'cancle':
+                pass
+        else:
+            logging.warning("file: %s not found"%file_full_name)
+    def cmd_putdir(self, targetpath, savepath):
+        full_path = os.path.join(self.root_dir,targetpath)
+        #print("targetpath:", targetpath)
+        #print("savepath:", savepath)
+        #print("full_path", full_path)
+        if os.path.isdir(full_path):
+            full_path_list = os.listdir(full_path)
+            for p in full_path_list:
+                full_name = os.path.join(full_path,p)
+                if os.path.isfile(full_name):
+                    self.cmd_put_file(os.path.join(targetpath, p), os.path.join(savepath, p))
+                else:
+                    target_path = os.path.join(self.current_local_path,os.path.join(targetpath, p))
+                    save_path = os.path.join(self.current_remote_path, os.path.join(savepath, p))
+                    #print("r: ",target_path, save_path)
+                    self.cmd_putdir(target_path, save_path)
 
 
 
@@ -237,6 +290,14 @@ def main():
                 client.cmd_ls()
             elif client.cmd_list[0]=="cd":
                 client.cmd_cd()
+            elif client.cmd_list[0]=='put':
+                file_name = os.path.join(client.current_local_path, client.cmd_list[1])
+                save_name = os.path.join(client.current_remote_path, os.path.basename(client.cmd_list[1]).strip('/'))
+                client.cmd_put_file(file_name, save_name)
+            elif client.cmd_list[0]=="putdir":
+                target_path = os.path.join(client.current_local_path,client.cmd_list[1])
+                save_path = os.path.join(client.current_remote_path, os.path.basename(client.cmd_list[1].strip('/')))
+                client.cmd_putdir(target_path, save_path)
 
 
 if __name__=="__main__":
@@ -244,8 +305,3 @@ if __name__=="__main__":
         main()
     except KeyboardInterrupt:
         exit()
-
-'''client.cmd = client.cmd_list[0] + ' ' + client.current_remote_path + '/'
-                if len(client.cmd_list)==2:
-                    client.cmd += client.cmd_list[1]
-                client.sendall(bytes(client.cmd, encoding="utf-8"))'''

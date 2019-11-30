@@ -5,6 +5,7 @@ import re
 import logging
 import socket
 import hashlib
+from tqdm import tqdm
 import platform
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
@@ -76,6 +77,46 @@ class remote_shell_server(socket.socket):
             print('fpl:',('dir '+ info_str))
         else:
             self.conn.send('None'.encode('utf-8'))  # 发送数据
+    def recieve_file(self, savename):
+        self.conn.send("ACK".encode("utf-8"))
+        client_response = self.conn.recv(1024)
+        file_size = int(client_response.decode("utf-8"))
+        self.conn.send("ready".encode("utf-8"))
+        # 开始接收文件，并写入服务器硬盘空间
+        file_full_name = os.path.join(self.root_dir,savename)
+        savedir = os.path.split(file_full_name)[0]
+        if not os.path.exists(savedir):
+            os.makedirs(savedir)
+        with open(file_full_name, "wb") as f:
+            received_size = 0
+            m = hashlib.md5()
+            with tqdm(total=file_size, unit='B', unit_scale=True, leave=True, desc="%s"%savename) as pbar:#进度条
+                while received_size < file_size:
+                    size = 0  # 准确接收数据大小，解决粘包
+                    if file_size - received_size > 1024: # 多次接收
+                        size = 1024
+                    else:  # 最后一次接收完毕
+                        size = file_size - received_size
+
+                    data = self.conn.recv(size)  # 多次接收内容，接收大数据
+                    received_size += len(data)
+                    pbar.update(len(data))
+                    m.update(data)
+                    f.write(data)
+        print("file saved as \' %s \'"%file_full_name)
+        #print("实际接收的大小:", received_size)  # 解码
+        # md5校验
+        md5_client = self.conn.recv(1024).decode("utf-8")
+        md5_sever = m.hexdigest()
+        #print("客户端发来的md5:", md5_client)
+        #print("接收文件的md5:", md5_sever)
+        if md5_sever != md5_client:
+            logging.warning("MD5 Verification Failed，所接收文件可能存在风险")
+        else:
+            logging.info("MD5 Verification successful!")
+        self.conn.send("done".encode("utf-8"))
+
+
 
 
 def main():
@@ -99,6 +140,10 @@ def main():
                     server.cmd_getdir_process()
                 elif server.cmd_list[0]=="ls":
                     server.send_dir_info(server.cmd_list[1])
+                elif server.cmd_list[0]=="put":
+                    server.recieve_file(server.cmd_list[1])
+                elif server.cmd_list[0]=="putdir":
+                    pass
             print("server: disconnect with client addr:", server.addr,'\n')
 
 if __name__=="__main__":       
