@@ -17,7 +17,7 @@ class remote_shell_server(socket.socket):
     可以响应来自于客户端的类似于bash的命令
     可以将服务器端的文件传输给客户端，或则接收来自客户端的文件
     '''
-    def __init__(self, root_dir='./server_root_dir/', HOST='127.0.0.1', PORT = 65432):
+    def __init__(self, root_dir='./SERVER_ROOT_DIR/', HOST='127.0.0.1', PORT = 65432):
         socket.socket.__init__(self,socket.AF_INET, socket.SOCK_STREAM)#继承父类
         self.HOST = HOST# The server's hostname or IP address, you may set it to sth like '192.168.26.128'
         self.PORT = PORT# The port used by the server

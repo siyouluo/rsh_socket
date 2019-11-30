@@ -20,7 +20,7 @@ class remote_shell_client(socket.socket):
     可以对本地或远程文件进行操作
     或者进行文件传输
     '''
-    def __init__(self, root_dir='./client_root_dir/', HOST='127.0.0.1', PORT = 65432):
+    def __init__(self, root_dir='./CLIENT_ROOT_DIR/', HOST='127.0.0.1', PORT = 65432):
         socket.socket.__init__(self,socket.AF_INET, socket.SOCK_STREAM)#继承父类
         self.HOST = HOST# The server's hostname or IP address, you may set it to sth like '192.168.26.128'
         self.PORT = PORT# The port used by the server

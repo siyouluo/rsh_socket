@@ -1,5 +1,3 @@
-/client_root_dir
-test.py
-server_root_dir/bigfile.txt
-server_root_dir/code_amd64/
-server_root_dir/test/
+/CLIENT_ROOT_DIR
+/SERVER_ROOT_DIR
+/TEST/bigfile.txt
