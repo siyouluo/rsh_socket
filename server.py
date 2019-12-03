@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-
+#-*- coding: utf-8 -*-
 import os
 import re
+import sys
 import logging
 import socket
 import hashlib
@@ -84,6 +85,7 @@ class remote_shell_server(socket.socket):
         self.conn.send("ready".encode("utf-8"))
         # 开始接收文件，并写入服务器硬盘空间
         file_full_name = os.path.join(self.root_dir,savename)
+        file_full_name = file_full_name.replace('./', '')
         savedir = os.path.split(file_full_name)[0]
         if not os.path.exists(savedir):
             os.makedirs(savedir)
@@ -119,8 +121,8 @@ class remote_shell_server(socket.socket):
 
 
 
-def main():
-    with remote_shell_server() as server:
+def main(ip='127.0.0.1', port=65432):
+    with remote_shell_server(HOST=ip, PORT=port) as server:
         server.bind((server.HOST, server.PORT))
         print('server socket:\n',server)
         server.listen()
@@ -148,6 +150,17 @@ def main():
 
 if __name__=="__main__":       
     try:
-        main()
+        if len(sys.argv)==1:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(('8.8.8.8', 80))#8.8.8.8是Google提供的免费DNS服务器的IP地址
+                ip = s.getsockname()[0]
+            port = 65432
+        elif len(sys.argv)==2:
+            ip = str(sys.argv[1])
+            port = 65432
+        elif len(sys.argv)==3:
+            ip = str(sys.argv[1])
+            port = int(sys.argv[2])
+        main(ip=ip, port=port)
     except KeyboardInterrupt:
         exit()

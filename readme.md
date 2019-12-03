@@ -30,7 +30,20 @@
 python3 -m pip install tqdm
 ```
 
-# 演示
+# 操作示例
+```bash
+#运行服务器
+python3 server.py 127.0.0.1 65432
+#ip未指定时默认为通过程序自动获取当前ip
+#port未指定时默认为65432
+#如果服务器端通过命令行手动指定了ip和port，会在终端打印
+
+#运行客户端
+python3 client.py 127.0.0.1 65432
+#ip未指定时默认为通过程序自动获取当前ip
+#port未指定时默认为65432
+#客户端ip和port需要和服务器端一致
+```
 ![server.png](./img/server.png)  
 ![client.png](./img/client.png)  
 更多测试截图可以查看img文件夹
@@ -47,45 +60,5 @@ python3 -m pip install tqdm
 * [python类的继承](https://www.cnblogs.com/bigberg/p/7182741.html)  
 * [python 获取脚本所在目录的正确方法](https://blog.csdn.net/vitaminc4/article/details/78702852)  
 * [解决CMD命令行窗口不显示颜色问题python](https://blog.csdn.net/qq_15158911/article/details/88943571)  
+* [python 获取本机IP地址](https://blog.csdn.net/u013314786/article/details/78962103)
 
-# 本项目文件树
-.  
-├── client.py  
-├── CLIENT_ROOT_DIR  
-├── img  
-│   ├── client2.png  
-│   ├── client3.png  
-│   ├── client.png  
-│   ├── server3.png  
-│   └── server.png  
-├── readme.md  
-├── server.py  
-├── SERVER_ROOT_DIR  
-└── TEST  
-    ├── bigfile.txt  
-    ├── dir1  
-    │   ├── dir1-1  
-    │   │   ├── testfile1-1-1.txt  
-    │   │   ├── testfile1-1-2.txt  
-    │   │   ├── testfile1-1-3.png  
-    │   │   └── testfile1-1-4.png  
-    │   ├── testfile1-1.txt  
-    │   ├── testfile1-2.txt  
-    │   ├── testfile1-3.png  
-    │   └── testfile1-4.png  
-    ├── dir2  
-    │   ├── dir2-1  
-    │   │   ├── testfile2-1-1.txt  
-    │   │   ├── testfile2-1-2.txt  
-    │   │   ├── testfile2-1-3.png  
-    │   │   └── testfile2-1-4.png  
-    │   ├── testfile2-1.txt  
-    │   ├── testfile2-2.txt  
-    │   ├── testfile2-3.png  
-    │   └── testfile2-4.png  
-    ├── testfile1.txt  
-    ├── testfile2.txt  
-    ├── testfile3.png  
-    └── testfile4.png  
-
-8 directories, 29 files  

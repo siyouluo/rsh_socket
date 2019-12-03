@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-
+#-*- coding: utf-8 -*-
 import os
+import sys
 import re
+import platform
+import getpass
 import logging
 import socket
 import hashlib
 from tqdm import tqdm
-import platform
-import getpass
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(filename)s[line:%(lineno)d] - %(levelname)s: %(message)s')
@@ -27,7 +28,7 @@ class remote_shell_client(socket.socket):
         self.root_dir = os.path.join(os.path.split(os.path.realpath(__file__))[0],root_dir.strip('./'))#客户端根目录
         if not os.path.exists(self.root_dir):
             os.makedirs(self.root_dir)
-        self.system = platform.system()#识别当前操作系统，增加兼容性
+        self.system = platform.system()#识别当前操作系统，提高兼容性
         self.current_local_path = '.'#客户端当前路径
         self.current_remote_path = '.'#远程服务器当前路径，实际上该变量不发送给远程服务器，客户端不应该修改服务器的变量
         self.pos = 'local'#当前位置，本地-local 或 远端-remote
@@ -39,19 +40,28 @@ class remote_shell_client(socket.socket):
             from colorama import init
             init(autoreset=True)
     def PS1_update(self):
+        '''
+        更新命令提示字符串，包括用户名、当前位置(local/remote)、当前路径
+        '''
         if self.pos == 'local':
             path = self.current_local_path.strip('.')
         else:
             path = self.current_remote_path.strip('.')
         self.PS1 = '\033[1;32m'+self.usrname+'@'+self.pos+'\033[0m'+':'+'\033[0;34m~'+path+'\033[0m'+'$ '
-        #self.PS1 = '\033[1;32m'+self.usrname+'@'+self.pos+'\033[0m:\033[1;34m~'+path+'\033[0m$ '
-
     def cmd_process(self):
-        self.cmd = self.cmd.replace('\t', ' ')
-        self.cmd = re.sub(' +', ' ', self.cmd)
-        self.cmd = self.cmd.strip(' ')
-        self.cmd_list = self.cmd.split(' ')
+        '''
+        处理用户输入命令，避免由于用户输入不规范引起程序崩溃
+        '''
+        self.cmd = self.cmd.replace('\t', ' ')#将制表符替换为空格
+        self.cmd = re.sub(' +', ' ', self.cmd)#将两个或以上空格替换为一个空格
+        self.cmd = self.cmd.strip(' ')#删除命令前后的空格
+        self.cmd_list = self.cmd.split(' ')#将命令拆分，便于判断命令参数
     def cmd_cd(self):
+        '''
+        处理cd命令：切换当前路径
+        cd + <dirname>
+        cd .. 表示切换到上一级目录
+        '''
         if self.pos == 'remote':
             if len(self.cmd_list)==2:
                 if self.cmd_list[1]=='..':
@@ -60,7 +70,7 @@ class remote_shell_client(socket.socket):
                     self.current_remote_path = os.path.join(self.current_remote_path, self.cmd_list[1].strip('/'))
             else:
                 self.current_remote_path = '.'
-        else:
+        elif self.pos == 'local':
             if len(self.cmd_list)==2:
                 if self.cmd_list[1]=='..':
                     self.current_local_path = os.path.dirname(self.current_local_path).strip('/')
@@ -68,17 +78,18 @@ class remote_shell_client(socket.socket):
                     self.current_local_path = os.path.join(self.current_local_path, self.cmd_list[1].strip('/'))
             else:
                 self.current_local_path = '.'
-
     def cmd_ls(self):
         '''
-        接收服务器发来的文件夹下文件信息
-        print(' file \033[1;34m dir \033[0m') #彩色打印
+        处理ls命令，列出指定路径下的内容，如果是文件夹，将显示为蓝色
+        ls + <dirname>
+        路径名缺省时列出当前路径下的内容
         '''
         if self.pos == 'remote':
+            #如果当前位置为远程文件系统，则从服务器获取当前路径下的信息，终端打印输出
             self.cmd = self.cmd_list[0] + ' ' + self.current_remote_path + '/'
             if len(self.cmd_list)==2:
                 self.cmd += self.cmd_list[1]
-            self.sendall(bytes(self.cmd, encoding="utf-8"))
+            self.sendall(bytes(self.cmd, encoding="utf-8"))#将命令发送到服务器
             server_response = self.recv(1024)
             if server_response.decode("utf-8") == 'not found':
                 logging.warning("no such dir!")
@@ -103,8 +114,8 @@ class remote_shell_client(socket.socket):
             #print(info_str)
             p = info_str.split(' ')
             print_str = '  '.join(['\033[1;34m'+s.strip('/')+'\033[0m' if s.endswith('/') else s for s in p])
-
-            print(print_str)
+            if print_str:
+                print(print_str)
         else:
             path = self.current_local_path
             if len(self.cmd_list)==2:
@@ -115,9 +126,10 @@ class remote_shell_client(socket.socket):
                 return
             print_list = [p if os.path.isfile(os.path.join(full_path,p)) else (p+'/') for p in os.listdir(full_path)]
             print_str = '  '.join(['\033[1;34m'+s.strip('/')+'\033[0m' if s.endswith('/') else s for s in print_list])
-            print(print_str)
+            if print_str:
+                print(print_str)
             
-    def cmd_get_file(self, filename, savename):
+    def cmd_get(self, filename, savename):
         '''
         从服务器接收一个文件
         '''
@@ -130,6 +142,7 @@ class remote_shell_client(socket.socket):
             return
         file_size = int(server_response.decode("utf-8"))
         file_full_name = os.path.join(self.root_dir,savename)
+        file_full_name = file_full_name.replace('./', '')
         filepath = os.path.split(file_full_name)[0]
         if not os.path.exists(filepath):
             os.makedirs(filepath)
@@ -153,7 +166,7 @@ class remote_shell_client(socket.socket):
         with open(file_full_name, "wb") as f:
             received_size = 0
             m = hashlib.md5()
-            with tqdm(total=file_size, unit='B', unit_scale=True, leave=True, desc="%s"%filename) as pbar:#进度条
+            with tqdm(total=file_size, unit='B', unit_scale=True, leave=True, desc="%s"%os.path.basename(filename)) as pbar:#进度条
                 while received_size < file_size:
                     size = 0  # 准确接收数据大小，解决粘包
                     if file_size - received_size > 1024: # 多次接收
@@ -178,6 +191,9 @@ class remote_shell_client(socket.socket):
         else:
             logging.info("MD5 Verification successful!")
     def cmd_getdir(self, targetpath, savepath):
+        '''
+        递归下载文件夹内所有文件
+        '''
         full_path = os.path.join(self.root_dir, savepath)
         if not os.path.exists(full_path):
             os.makedirs(full_path)
@@ -185,7 +201,7 @@ class remote_shell_client(socket.socket):
         self.send(bytes("getdir %s"%targetpath, encoding="utf-8"))  
         # 向远程服务器发送命令，下载文件夹，远程服务器检查是文件夹还是文件
         # 如果是文件夹，发回 'dir'，以及该文件夹下所有文件夹和文件，否则返回'None'
-        server_response = self.recv(1024*16).decode("utf-8") #我们先假定此次发回的字节数不会超过1KB
+        server_response = self.recv(1024*16).decode("utf-8") #暂且假定此次发回的字节数不会超过16KB
         server_response_list = server_response.split(' ')
         if server_response_list[0]=='dir':
             info_list = server_response_list[1:]
@@ -196,8 +212,8 @@ class remote_shell_client(socket.socket):
                 else:
                     new_target_path = os.path.join(targetpath, i)
                     new_save_path = os.path.join(savepath, i)
-                    self.cmd_get_file(new_target_path, new_save_path)
-    def cmd_put_file(self, filename, savename):
+                    self.cmd_get(new_target_path, new_save_path)
+    def cmd_put(self, filename, savename):
         '''
         将本地文件发送至远程服务器
         '''
@@ -219,9 +235,11 @@ class remote_shell_client(socket.socket):
             if server_ACK == 'ready':
                 m = hashlib.md5()
                 f = open(file_full_name, "rb")
-                for line in f:
-                    self.send(line)  # 发送数据
-                    m.update(line)
+                with tqdm(total=size, unit='B', unit_scale=True, leave=True, desc="%s"%os.path.basename(filename)) as pbar:#进度条
+                    for line in f:
+                        self.send(line)  # 发送数据
+                        m.update(line)
+                        pbar.update(len(line))
                 f.close()
                 # 3.发送md5值进行校验
                 md5 = m.hexdigest()
@@ -229,7 +247,7 @@ class remote_shell_client(socket.socket):
                 print("md5:", md5)
                 server_ACK = self.recv(1024).decode("utf-8")  # 完成确认   ready
                 if server_ACK == 'done':
-                    print("done!")
+                    print("%s put done!"%filename)
             elif server_ACK == 'cancle':
                 pass
         else:
@@ -244,7 +262,7 @@ class remote_shell_client(socket.socket):
             for p in full_path_list:
                 full_name = os.path.join(full_path,p)
                 if os.path.isfile(full_name):
-                    self.cmd_put_file(os.path.join(targetpath, p), os.path.join(savepath, p))
+                    self.cmd_put(os.path.join(targetpath, p), os.path.join(savepath, p))
                 else:
                     target_path = os.path.join(self.current_local_path,os.path.join(targetpath, p))
                     save_path = os.path.join(self.current_remote_path, os.path.join(savepath, p))
@@ -252,17 +270,12 @@ class remote_shell_client(socket.socket):
                     self.cmd_putdir(target_path, save_path)
 
 
-
-
-
-
-
-def main():
-    with remote_shell_client() as client:
+def main(ip='127.0.0.1', port=65432):
+    with remote_shell_client(HOST=ip, PORT=port) as client:
         client.connect((client.HOST, client.PORT))#连接服务器
         while True:
             client.PS1_update()#根据用户名，当前路径等设置命令提示符
-            print(client.PS1, end='')#打印命令提示符，例如 usr@local: ~$ xxx
+            print(client.PS1,end='') #打印命令提示符，例如 usr@local: ~$ xxx
             client.cmd = input()#等待用户输入
             client.cmd_process()#用户输入命令可能不够规范，需要进行预处理
             #print(bytes(client.cmd, encoding="utf-8")) #调试，显示读取到的用户命令
@@ -281,7 +294,7 @@ def main():
             elif client.cmd_list[0]=='get':
                 file_name = os.path.join(client.current_remote_path, client.cmd_list[1])
                 save_name = os.path.join(client.current_local_path, os.path.basename(client.cmd_list[1]).strip('/'))
-                client.cmd_get_file(file_name, save_name)
+                client.cmd_get(file_name, save_name)
             elif client.cmd_list[0]=="getdir":
                 target_path = os.path.join(client.current_remote_path,client.cmd_list[1])
                 save_path = os.path.join(client.current_local_path, os.path.basename(client.cmd_list[1].strip('/')))
@@ -293,7 +306,7 @@ def main():
             elif client.cmd_list[0]=='put':
                 file_name = os.path.join(client.current_local_path, client.cmd_list[1])
                 save_name = os.path.join(client.current_remote_path, os.path.basename(client.cmd_list[1]).strip('/'))
-                client.cmd_put_file(file_name, save_name)
+                client.cmd_put(file_name, save_name)
             elif client.cmd_list[0]=="putdir":
                 target_path = os.path.join(client.current_local_path,client.cmd_list[1])
                 save_path = os.path.join(client.current_remote_path, os.path.basename(client.cmd_list[1].strip('/')))
@@ -302,6 +315,17 @@ def main():
 
 if __name__=="__main__":
     try:
-        main()
+        if len(sys.argv)==1:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(('8.8.8.8', 80))#8.8.8.8是Google提供的免费DNS服务器的IP地址
+                ip = s.getsockname()[0]
+            port = 65432
+        elif len(sys.argv)==2:
+            ip = str(sys.argv[1])
+            port = 65432
+        elif len(sys.argv)==3:
+            ip = str(sys.argv[1])
+            port = int(sys.argv[2])
+        main(ip=ip, port=port)
     except KeyboardInterrupt:
         exit()
