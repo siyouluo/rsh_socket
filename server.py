@@ -52,7 +52,7 @@ class remote_shell_server(socket.socket):
                 md5 = m.hexdigest()
                 self.conn.send(md5.encode("utf-8"))  # 发送md5值
                 print("md5:", md5)
-            elif client_ACK == 'cancle':
+            elif client_ACK == 'cancel':
                 pass
         else:
             self.conn.send('not found'.encode("utf-8"))#文件不存在
